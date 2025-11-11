@@ -1,0 +1,12 @@
+{
+  "embedding_model": {
+    "downloaded": true,
+    "download_time": 1761397812.5049155,
+    "version": "1.0"
+  },
+  "sentiment_model": {
+    "downloaded": true,
+    "download_time": 1761397932.957063,
+    "version": "1.0"
+  }
+}
