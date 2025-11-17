@@ -1,7 +1,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 import re
 import requests
@@ -12,7 +12,6 @@ sys.path.append(str(Path(__file__).parent.parent / "utils"))
 
 # Import required components
 from utils.model_manager import ModelManager
-from utils.vector_db_manager import VectorDBManager, is_vector_db_available
 
 class CareerRoadmapGenerator:
     """Generates personalized career roadmaps with essential features"""
@@ -21,12 +20,9 @@ class CareerRoadmapGenerator:
         # Initialize model manager for LLM capabilities
         self.model_manager = ModelManager()
         
-        # Initialize vector database manager for knowledge retrieval
-        if is_vector_db_available():
-            self.vector_db_manager = VectorDBManager()
-        else:
-            self.vector_db_manager = None
-            print("Warning: Vector database not available. Some features may be limited.")
+        # Set vector database manager to None since RAG should only be used in specific modules
+        self.vector_db_manager = None
+        
         
         # Define role-specific roadmap templates (fallback)
         self.roadmap_templates = {
@@ -628,15 +624,7 @@ class CareerRoadmapGenerator:
         }
 
     def _get_template_text(self, template_for: str) -> str:
-        """Fetch a template from vector DB by feature key, if available."""
-        try:
-            if self.vector_db_manager and hasattr(self.vector_db_manager, 'search_templates'):
-                res = self.vector_db_manager.search_templates(template_for, top_k=1)
-                if res:
-                    md = res[0].get('metadata', {})
-                    return (md.get('template') or md.get('excerpt') or '').strip()
-        except Exception:
-            pass
+        """Fetch a template (stub method since RAG is not used in this module)."""
         return ""
     
     def _extract_skills_from_text(self, text: str) -> List[str]:
@@ -727,40 +715,8 @@ class CareerRoadmapGenerator:
         """
         projects: List[Dict[str, Any]] = []
 
-        # Step 1: Retrieve relevant project ideas from vector DB (if available)
+        # Step 1: No RAG retrieval since it's not used in this module
         retrieved_context = []
-        try:
-            if self.vector_db_manager:
-                queries = [
-                    f"project ideas for {target_role}",
-                    f"{experience_level} {target_role} project ideas",
-                    f"{target_role} portfolio projects",
-                ]
-                if phase_skills:
-                    skill_q = ", ".join(phase_skills[:3])
-                    queries.append(f"{target_role} project ideas using {skill_q}")
-                role_cats = self._role_to_categories(target_role)
-                for q in queries:
-                    for res in self.vector_db_manager.search_knowledge(q, top_k=3):
-                        md = res.get('metadata', {})
-                        if md.get('type') == 'project_idea':
-                            # Prefer by category match
-                            if role_cats and md.get('category') in role_cats:
-                                retrieved_context.append(md)
-                            else:
-                                retrieved_context.append(md)
-                # Dedup by title
-                seen = set()
-                deduped = []
-                for md in retrieved_context:
-                    title = md.get('title') or md.get('name') or md.get('description','')[:40]
-                    if title in seen:
-                        continue
-                    seen.add(title)
-                    deduped.append(md)
-                retrieved_context = deduped[: max(5, count)]
-        except Exception:
-            pass
 
         # If no LLM, try to adapt retrieved items or fallback generics
         if not self.model_manager.models.get('lm'):
@@ -1026,37 +982,14 @@ Return ONLY valid JSON as:
         }
     
     def _get_generic_resources(self, skills: List[str]) -> List[Dict[str, str]]:
-        """Get generic learning resources for skills from vector database or fallback"""
+        """Get generic learning resources for skills without using vector database"""
         resources = []
         
-        # Try to get resources from vector database
-        if self.vector_db_manager:
-            try:
-                for skill in skills[:3]:  # Limit to 3 skills
-                    search_results = self.vector_db_manager.search_knowledge(
-                        f"best learning resources for {skill}", top_k=2
-                    )
-                    for result in search_results:
-                        metadata = result.get('metadata', {})
-                        if metadata.get('type') == 'learning_resource':
-                            resources.append({
-                                'name': metadata.get('title', f'{skill} Learning Resource'),
-                                'type': metadata.get('resource_type', 'course'),
-                                'platform': metadata.get('platform', 'Online'),
-                                'url': metadata.get('url', '#'),
-                                'duration': metadata.get('duration', 'Variable'),
-                                'difficulty': metadata.get('difficulty', 'Intermediate'),
-                                'cost': metadata.get('cost', 'Variable')
-                            })
-            except Exception as e:
-                print(f"Error retrieving resources from vector database: {e}")
-        
-        # Fallback resources if none found
-        if not resources:
-            for skill in skills[:3]:
-                # Get free resources for each skill
-                free_resources = self._fetch_free_resources(skill)
-                resources.extend(free_resources[:2])  # Limit to 2 resources per skill
+        # Since RAG is not used in this module, directly use fallback resources
+        for skill in skills[:3]:
+            # Get free resources for each skill
+            free_resources = self._fetch_free_resources(skill)
+            resources.extend(free_resources[:2])  # Limit to 2 resources per skill
         
         # If still no resources, provide generic ones
         if not resources:
@@ -1074,65 +1007,27 @@ Return ONLY valid JSON as:
         return resources
     
     def _get_generic_projects(self, skills: List[str]) -> List[Dict[str, Any]]:
-        """Get generic project ideas for skills"""
+        """Get generic project ideas for skills without using vector database"""
         projects = []
         
-        # Try to get projects from vector database
-        if self.vector_db_manager:
-            try:
-                for skill in skills[:2]:  # Limit to 2 skills
-                    search_results = self.vector_db_manager.search_knowledge(
-                        f"project ideas for {skill}", top_k=1
-                    )
-                    for result in search_results:
-                        metadata = result.get('metadata', {})
-                        if metadata.get('type') == 'project_idea':
-                            projects.append({
-                                'name': metadata.get('title', f'{skill} Project'),
-                                'description': metadata.get('description', f'Project related to {skill}'),
-                                'technologies': metadata.get('technologies', [skill]),
-                                'difficulty': metadata.get('difficulty', 'Intermediate'),
-                                'estimated_hours': metadata.get('estimated_hours', 30)
-                            })
-            except Exception as e:
-                print(f"Error retrieving projects from vector database: {e}")
-        
-        # Fallback project ideas if none found
-        if not projects:
-            for i, skill in enumerate(skills[:2]):
-                projects.append({
-                    'name': f'{skill} Practice Project',
-                    'description': f'A hands-on project to practice {skill} skills',
-                    'technologies': [skill],
-                    'difficulty': 'Beginner' if i == 0 else 'Intermediate',
-                    'estimated_hours': 20 + (i * 10)
-                })
+        # Since RAG is not used in this module, directly use fallback project ideas
+        for i, skill in enumerate(skills[:2]):
+            projects.append({
+                'name': f'{skill} Practice Project',
+                'description': f'A hands-on project to practice {skill} skills',
+                'technologies': [skill],
+                'difficulty': 'Beginner' if i == 0 else 'Intermediate',
+                'estimated_hours': 20 + (i * 10)
+            })
         
         return projects
     
     def _search_related_roadmaps(self, target_role: str, experience_level: str) -> List[Dict[str, Any]]:
-        """Search for related roadmaps in vector database"""
-        if not self.vector_db_manager:
-            return []
-        
-        try:
-            # Search for similar roadmaps
-            search_query = f"career roadmap for {target_role} {experience_level} level"
-            results = self.vector_db_manager.search_knowledge(search_query, top_k=3)
-            
-            # Filter for roadmap documents
-            roadmap_results = []
-            for result in results:
-                metadata = result.get('metadata', {})
-                if metadata.get('type') == 'career_roadmap':
-                    roadmap_results.append(metadata)
-            
-            return roadmap_results
-        except Exception as e:
-            print(f"Error searching related roadmaps: {e}")
-            return []
+        """Search for related roadmaps (stub method since RAG is not used in this module)"""
+        # Since RAG is not used in this module, return empty list
+        return []
     
-    def generate_roadmap(self, target_role: str, experience_level: str, timeline: int, primary_goal: str, current_skills: List[str] = None) -> Dict[str, Any]:
+    def generate_roadmap(self, target_role: str, experience_level: str, timeline: int, primary_goal: str, current_skills: Optional[List[str]] = None) -> Dict[str, Any]:
         """Generate a personalized career roadmap based on user inputs"""
         # Normalize target role for template matching
         normalized_role = target_role.lower().replace(' ', '_').replace('-', '_')
@@ -1253,16 +1148,7 @@ Return ONLY valid JSON as:
                             'source': 'llm_generated'
                         }
                         
-                        # Enhance roadmap with vector database context
-                        if self.vector_db_manager:
-                            user_profile = {
-                                'target_role': target_role,
-                                'experience_level': experience_level,
-                                'skills': current_skills or [],
-                                'goals': [primary_goal]
-                            }
-                            roadmap = self.enhance_roadmap_with_vector_db(roadmap, user_profile)
-                        
+                        # Enhance roadmap without vector database context since RAG is not used in this module                        
                         return roadmap
                 except json.JSONDecodeError:
                     pass  # Fall back to template-based approach
@@ -1310,16 +1196,7 @@ Return ONLY valid JSON as:
             'source': 'template_based'
         }
         
-        # Enhance roadmap with vector database context
-        if self.vector_db_manager:
-            user_profile = {
-                'target_role': target_role,
-                'experience_level': experience_level,
-                'skills': current_skills or [],
-                'goals': [primary_goal]
-            }
-            roadmap = self.enhance_roadmap_with_vector_db(roadmap, user_profile)
-        
+        # Enhance roadmap without vector database context since RAG is not used in this module        
         return roadmap
     
     def _adjust_timeline(self, template: Dict, timeline: int, experience_level: str) -> Dict:
@@ -1695,96 +1572,40 @@ Return ONLY valid JSON as:
             raise ValueError(f"Unsupported export format: {format}")
     
     def store_roadmap(self, roadmap_text: str, metadata: Dict[str, Any]) -> str:
-        """Store generated roadmap in vector database
+        """Store generated roadmap (stub method since RAG is not used in this module)
         
         Args:
             roadmap_text (str): The generated roadmap text
             metadata (Dict[str, Any]): Metadata about the roadmap
             
         Returns:
-            str: Document ID of the stored roadmap
+            str: Empty string since RAG is not used in this module
         """
-        if not self.vector_db_manager:
-            print("Warning: Vector database not available for storing roadmap")
-            return None
-            
-        try:
-            # Add type identifier for roadmaps
-            metadata['type'] = 'career_roadmap'
-            # Keep a short excerpt for RAG augmentation later
-            try:
-                clean_text = roadmap_text.strip().replace('\n', ' ')
-                metadata['excerpt'] = clean_text[:700]
-            except Exception:
-                metadata['excerpt'] = roadmap_text[:700]
-            
-            # Add roadmap to vector database as knowledge item
-            doc_id = self.vector_db_manager.add_knowledge_item(roadmap_text, metadata)
-            print(f"✅ Career roadmap stored in vector database with ID: {doc_id}")
-            return doc_id
-        except Exception as e:
-            print(f"Error storing roadmap in vector database: {e}")
-            return None
+        print("Warning: Vector database not available for storing roadmap since RAG is not used in this module")
+        return ""
     
     def search_similar_roadmaps(self, query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Search for similar roadmaps using vector database
+        """Search for similar roadmaps (stub method since RAG is not used in this module)
         
         Args:
             query_text (str): Query text to search for similar roadmaps
             top_k (int): Number of similar roadmaps to return
             
         Returns:
-            List[Dict[str, Any]]: List of similar roadmaps with scores and metadata
+            List[Dict[str, Any]]: Empty list since RAG is not used in this module
         """
-        if not self.vector_db_manager:
-            print("Warning: Vector database not available for searching similar roadmaps")
-            return []
-            
-        try:
-            # Search for knowledge items (roadmaps)
-            results = self.vector_db_manager.search_knowledge(query_text, top_k)
-            # Filter for roadmaps
-            roadmap_results = [r for r in results if r.get('metadata', {}).get('type') == 'career_roadmap']
-            print(f"✅ Found {len(roadmap_results)} similar roadmaps")
-            return roadmap_results
-        except Exception as e:
-            print(f"Error searching similar roadmaps in vector database: {e}")
-            return []
+        print("Warning: Vector database not available for searching similar roadmaps since RAG is not used in this module")
+        return []
     
     def enhance_roadmap_with_vector_db(self, roadmap: Dict[str, Any], user_profile: Dict[str, Any]) -> Dict[str, Any]:
-        """Enhance roadmap by combining LLM generation with vector database retrieval
+        """Enhance roadmap (stub method since RAG is not used in this module)
         
         Args:
             roadmap (Dict[str, Any]): The generated roadmap
             user_profile (Dict[str, Any]): User profile information
             
         Returns:
-            Dict[str, Any]: Enhanced roadmap combining LLM and vector database results
+            Dict[str, Any]: Unchanged roadmap since RAG is not used in this module
         """
-        if not self.vector_db_manager:
-            print("Warning: Vector database not available for enhancing roadmap")
-            return roadmap
-            
-        try:
-            # Search for professional career roadmaps for inspiration
-            target_role = user_profile.get('target_role', 'general')
-            experience_level = user_profile.get('experience_level', 'beginner')
-            query_text = f"career roadmap for {target_role} {experience_level} level"
-            similar_roadmaps = self.search_similar_roadmaps(query_text, top_k=2)
-            
-            # Add professional roadmap insights
-            enhanced_roadmap = roadmap.copy()
-            enhanced_roadmap['professional_benchmarks'] = similar_roadmaps
-            
-            # Extract best practices from professional roadmaps
-            best_practices = []
-            for prof_roadmap in similar_roadmaps:
-                metadata = prof_roadmap.get('metadata', {})
-                # Add insights from professional roadmaps
-                # (In a real implementation, this would be used to enhance the roadmap content)
-            
-            print("✅ Career roadmap enhanced with professional benchmarks from vector database")
-            return enhanced_roadmap
-        except Exception as e:
-            print(f"Error enhancing roadmap with vector database: {e}")
-            return roadmap
+        print("Warning: Vector database not available for enhancing roadmap since RAG is not used in this module")
+        return roadmap

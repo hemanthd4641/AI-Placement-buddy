@@ -5,6 +5,7 @@ sentence-transformers>=2.2.2
 faiss-cpu>=1.7.4
 datasets>=2.12.0
 accelerate>=0.20.0  # Added for CPU optimization
+python-dotenv>=1.0.0  # Added for environment variable management
 
 # NLP Processing
 spacy>=3.6.0
@@ -41,7 +42,7 @@ opencv-python>=4.8.0
 # dlib>=19.24.0  # Optional: Alternative to mediapipe for face detection
 
 # Utilities
-python-dotenv>=1.0.0
+# python-dotenv>=1.0.0  # Moved to core dependencies
 requests>=2.31.0
 tqdm>=4.65.0
 Pillow>=9.0.0

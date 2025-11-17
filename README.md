@@ -1,54 +1,83 @@
-# 🤖 AI Placement Mentor Bot
+# AI Placement Mentor Bot
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://your-app-url.streamlit.app)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+A comprehensive AI-powered placement preparation assistant built with 100% free and open-source tools.
 
-An advanced AI-powered mentor bot to help students prepare for placements with resume analysis, interview preparation, and career planning - built entirely with **free/open-source AI tools**.
+## 🎯 Overview
 
-The Placement Bot is an intelligent career guidance system that leverages state-of-the-art AI models and Retrieval-Augmented Generation (RAG) to provide personalized assistance for job seekers. With offline capabilities and efficient model caching, it offers a comprehensive suite of tools for resume optimization, skill gap analysis, career roadmap generation, and interview preparation.
+This project helps students and job seekers prepare for placements with advanced tools for resume analysis, skill development, and job application preparation. It uses state-of-the-art AI models while being completely free and open-source.
 
-## 📚 Documentation
+## 🚀 Quick Start
 
-- [LLM and Vector DB Integration Guide](LLM_VECTOR_DB_INTEGRATION.md)
-- [Feature Workflow Documentation](FEATURE_WORKFLOW.md)
-- [Technical Architecture](TECHNICAL_ARCHITECTURE.md)
-- [Architecture Overview](ARCHITECTURE_OVERVIEW.md)
-- [Integration Summary](INTEGRATION_SUMMARY.md)
-- [Project Issues and Solutions](PROJECT_ISSUES_AND_SOLUTIONS.md)
-- [Technical Challenges Summary](TECHNICAL_CHALLENGES_SUMMARY.md)
-- [Troubleshooting Guide](TROUBLESHOOTING_GUIDE.md)
-- [Model Caching Improvements](documentation/model_caching_improvements.md)
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd Placement_Bot
+   ```
 
-## 🎯 Features
+2. **Set up environment variables**
+   Create a `.env` file in the project root and add your Hugging Face API key:
+   ```env
+   HUGGINGFACE_API_KEY=your_huggingface_api_key_here
+   ```
+   
+   To get your API key:
+   - Visit [Hugging Face](https://huggingface.co)
+   - Sign up or log in to your account
+   - Go to your profile settings
+   - Navigate to "Access Tokens"
+   - Create a new token and copy it
+
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Download required spaCy model**
+   ```bash
+   python -m spacy download en_core_web_sm
+   ```
+
+5. **Run the application**
+   ```bash
+   streamlit run app.py
+   ```
+
+## 📋 Features
 
 ### 📄 **Resume Analyzer**
-- **PDF/DOCX Support**: Upload resumes in multiple formats
-- **ATS Scoring**: Get compatibility scores with Applicant Tracking Systems
-- **Skills Extraction**: Automatic identification of technical and soft skills using NER
-- **Gap Analysis**: Compare your skills with job descriptions
-- **Improvement Suggestions**: Actionable recommendations for resume enhancement
-- **Interview Questions**: Generate personalized technical and HR interview questions
+- **ATS Compatibility Scoring**: Evaluates how well your resume matches Applicant Tracking Systems
+- **Skill Extraction**: Automatically identifies technical and soft skills from your resume
+- **Experience Analysis**: Analyzes your work experience and projects
+- **Improvement Suggestions**: Provides actionable feedback to improve your resume
+- **Industry Match**: Suggests the best matching industry roles based on your resume
+- **Visualization**: Creates charts and graphs to visualize your skills and experience
+- **Export Options**: Export analysis results as JSON or PDF
 
-### 🔍 **Skill Gap Analyzer**
-- **Comprehensive Analysis**: Compare resume skills with job requirements
-- **Missing Skills Identification**: Detailed breakdown of skill gaps
-- **Learning Recommendations**: Personalized course and resource suggestions
-- **Priority Ranking**: Essential vs. nice-to-have skills
-- **Progress Tracking**: Monitor skill development over time
+### 🎯 **Skill Gap Analysis**
+- **Resume vs Job Description**: Compares your resume skills with job requirements
+- **Missing Skills Identification**: Identifies skills you need to develop
+- **Personalized Recommendations**: AI-powered learning path suggestions
+- **Resource Suggestions**: Recommended courses, tutorials, and practice platforms
+- **Industry-Specific Analysis**: Tailored recommendations based on target industry
+- **Progress Tracking**: Track your skill development over time
 
-### 🗺️ **Career Roadmap Generator**
-- **Personalized Roadmaps**: Custom learning paths based on target role and experience
-- **Phase-based Learning**: Structured progression from foundations to advanced skills
-- **Resource Integration**: Curated courses, tutorials, and documentation
-- **Progress Tracking**: Milestone completion and overall progress monitoring
-- **Export Functionality**: Download roadmaps as JSON or PDF
+### 🛣️ **Career Roadmap Generator**
+- **Personalized Learning Paths**: Creates customized roadmaps based on your target role
+- **Phase-based Learning**: Divides learning into manageable phases
+- **Resource Recommendations**: Suggests relevant courses, books, and tutorials
+- **Project Ideas**: Provides hands-on project suggestions to build your portfolio
+- **Timeline Customization**: Adjust roadmap duration to fit your schedule
+- **Industry-Specific Templates**: Role-specific learning paths
+- **Progress Tracking**: Track your learning progress with completion checkboxes
+- **Export Options**: Export your roadmap as JSON or Markdown
 
-### 📄 **PDF Analyzer**
-- **Document Analysis**: Extract and analyze content from PDF documents
-- **AI Summarization**: Generate concise summaries of lengthy documents
-- **Q&A Bot**: Ask questions about the document content
-- **Vector Database Integration**: Store and retrieve document information
+### 📚 **PDF Analyzer**
+- **Document Analysis**: Extracts and analyzes content from PDF documents
+- **AI-powered Summarization**: Generates concise summaries of lengthy documents
+- **Q&A Bot**: Ask questions about the PDF content and get AI-powered answers
+- **Vector Database Storage**: Stores document content for semantic search
+- **Keyword Extraction**: Identifies important keywords and concepts
+- **Content Visualization**: Visual representation of document structure
 
 ### 💬 **Placement Chatbot (RAG)**
 - **Retrieval-Augmented Generation**: Answers based on knowledge base and internet sources
@@ -56,6 +85,8 @@ The Placement Bot is an intelligent career guidance system that leverages state-
 - **DSA Preparation**: Help with data structures and algorithms concepts
 - **Software Engineering**: Best practices and system design principles
 - **HR Interview Prep**: Common HR questions and recommended responses
+- **Industry-Specific Advice**: Role-specific career guidance
+- **Real-time Learning**: Continuously updated knowledge base
 
 ## 🛠️ Tech Stack (100% Free & Open Source)
 
@@ -68,133 +99,166 @@ The Placement Bot is an intelligent career guidance system that leverages state-
 - **Document Processing**: PyMuPDF, python-docx - For handling PDF and DOCX files
 - **Data Visualization**: Matplotlib, Plotly - For creating charts and visualizations
 
-### AI Models
+### AI Models (All accessed via Hugging Face API)
 - **Primary LLM**: Microsoft Phi-3 Mini (4k) - Lightweight yet powerful language model
 - **Fallback LLM**: DistilGPT-2 - Smaller language model for text generation
-- **Embedding Model**: sentence-transformers/all-MiniLM-L6-v2 - For generating text embeddings
-- **Sentiment Analysis**: cardiffnlp/twitter-roberta-base-sentiment-latest - For sentiment classification
-- **Named Entity Recognition**: en_core_web_sm (spaCy) - For extracting entities from text
-
-### Infrastructure
-- **Model Caching**: Local storage with intelligent caching to avoid repeated downloads
-- **Offline Operation**: All models can be downloaded and run locally
-- **Cross-platform**: Works on Windows, macOS, and Linux
-
-## 🚀 Quick Start
-
-1. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   python -m spacy download en_core_web_sm
-   ```
-
-2. **Run the Application**:
-   ```bash
-   streamlit run app.py
-   ```
-
-3. **Access the Bot**:
-   Open your browser to `http://localhost:8501`
+- **Embedding Model**: all-MiniLM-L6-v2 - For sentence embeddings and similarity calculations
+- **Sentiment Analysis**: twitter-roberta-base-sentiment-latest - For sentiment classification
+- **Named Entity Recognition**: bert-large-cased-finetuned-conll03-english - For entity extraction
 
 ## 📁 Project Structure
 
 ```
-placement-bot/
-├── app.py                    # Main Streamlit application
-├── modules/                  # Core modules
-│   ├── resume_analyzer.py    # Resume parsing and analysis
-│   ├── skill_gap_analyzer.py # Skill gap identification
-│   ├── career_roadmap.py     # Career roadmap creation
-│   ├── pdf_analyzer.py       # PDF document analysis
-│   └── rag_chatbot.py        # RAG-powered chatbot
-├── data/                     # Datasets and knowledge base
-│   ├── placement_pipeline.db # SQLite database for application data
-│   └── vector databases      # FAISS indexes for semantic search
-├── models/                   # Model cache and embeddings
-│   ├── sentence_transformers/ # Cached sentence transformer models
-│   └── transformers/         # Cached transformer models
-├── utils/                    # Utility functions
-│   ├── text_processing.py
+Placement_Bot/
+├── app.py                 # Main Streamlit application
+├── requirements.txt       # Python dependencies
+├── README.md             # Project documentation
+├── .env                  # Environment variables (not in git)
+├── models/               # Model configuration cache
+├── modules/              # Feature modules
+│   ├── resume_analyzer.py
+│   ├── skill_gap_analyzer.py
+│   ├── career_roadmap.py
+│   ├── pdf_analyzer.py
+│   └── rag_chatbot.py
+├── utils/                # Utility functions
 │   ├── model_manager.py
-│   ├── vector_database.py
 │   ├── vector_db_manager.py
-│   └── pipeline_manager.py
-├── vector_db/                # Vector database indexes and metadata
-├── scripts/                  # Utility scripts
-│   └── smoke_test_roadmap.py # Testing script
-├── requirements.txt          # Dependencies
-└── README.md                # This file
+│   ├── vector_database.py
+│   ├── text_processing.py
+│   ├── templates.py
+│   ├── question_bank.py
+│   └── question_bank_bulk.py
+├── vector_db/            # Vector database files
+└── documentation/        # Additional documentation
 ```
 
-## 🔧 Configuration
+## 🔧 Setup Instructions
 
-The bot uses free/open-source models that are automatically downloaded and cached locally:
+### Prerequisites
+- Python 3.8 or higher
+- pip (Python package installer)
 
-### Language Models
-- **Primary LLM**: microsoft/Phi-3-mini-4k-instruct - Advanced conversational AI model
-- **Fallback LLM**: distilgpt2 - Lightweight text generation model
+### Installation Steps
 
-### NLP Models
-- **Embeddings**: sentence-transformers/all-MiniLM-L6-v2 - For semantic similarity
-- **NER**: en_core_web_sm (spaCy) - For named entity recognition
-- **Sentiment Analysis**: cardiffnlp/twitter-roberta-base-sentiment-latest - For sentiment classification
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd Placement_Bot
+   ```
 
-### Model Caching
-- Models are downloaded once and cached locally in the `models/` directory
-- Intelligent caching system prevents redundant downloads
-- Model status tracked in `models/model_cache.json`
+2. **Create a virtual environment (recommended)**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
 
-## 🎯 Usage Examples
+3. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-1. **Resume Analysis**: Upload your resume and get detailed feedback with ATS compatibility scoring, skill extraction, and improvement suggestions
-2. **Skill Gap Analysis**: Identify missing skills by comparing your resume with job descriptions and get personalized learning recommendations
-3. **Career Roadmaps**: Generate personalized learning paths with structured phases, resources, and project ideas based on your target role
-4. **PDF Analysis**: Upload documents to extract content, generate summaries, and ask questions about the material
-5. **Interview Preparation**: Get personalized technical and HR interview questions based on your resume and target role
-6. **Chatbot Assistance**: Ask questions about technical skills, DSA, software engineering, and HR interviews with answers augmented by a knowledge base
+4. **Download required spaCy model**
+   ```bash
+   python -m spacy download en_core_web_sm
+   ```
 
-## 🚀 Deployment
+5. **Set up Hugging Face API key**
+   Create a `.env` file in the project root and add your Hugging Face API key:
+   ```env
+   HUGGINGFACE_API_KEY=your_huggingface_api_key_here
+   ```
 
-### Local Development
-```bash
-streamlit run app.py
-```
+6. **Run the application**
+   ```bash
+   streamlit run app.py
+   ```
 
-### Streamlit Cloud
-1. Push code to GitHub
-2. Connect repository to Streamlit Cloud
-3. Deploy with one click
+## 🎮 Usage Guide
 
-### Hugging Face Spaces
-1. Create new Space
-2. Upload code and requirements
-3. Configure as Streamlit app
+### Resume Analyzer
+1. Navigate to the "Resume Analyzer" section
+2. Upload your resume (PDF or DOCX format)
+3. Click "Analyze Resume" to get detailed feedback
+4. Review the analysis results and improvement suggestions
+5. Export results if needed
 
-## 🧠 How It Works
+### Skill Gap Analysis
+1. Go to the "Skill Gap Analysis" section
+2. Upload your resume
+3. Paste the job description you're targeting
+4. Click "Analyze Skills Gap with AI"
+5. Review the missing skills and recommendations
 
-The Placement Bot leverages several advanced AI techniques to provide personalized career guidance:
+### Career Roadmap Generator
+1. Visit the "Career Roadmap Generator" section
+2. Enter your target role and experience level
+3. Provide your current skills (comma-separated)
+4. Adjust the timeline preference
+5. Click "Generate Career Roadmap"
+6. Follow the personalized learning path
 
-### Retrieval-Augmented Generation (RAG)
-- Combines language models with a vector database for context-aware responses
-- Retrieves relevant information from a knowledge base before generating answers
-- Provides accurate and up-to-date information without hallucination
+### PDF Analyzer
+1. Navigate to the "PDF Analyzer" section
+2. Upload a PDF document
+3. Click "Analyze PDF" to process the document
+4. Use the Q&A bot to ask questions about the document
+5. Review the summary and key points
 
-### Model Caching and Offline Operation
-- All AI models are downloaded once and cached locally
-- Subsequent runs use cached models for faster startup
-- Works completely offline after initial setup
+### Placement Chatbot
+1. Go to the "Placement Chatbot" section
+2. Type your question in the input field
+3. Click "Ask" or press Enter
+4. Review the AI-generated response with citations
 
-### Feature Integration
-- **Resume Analysis**: Uses NER to extract skills and experiences, compares with job requirements
-- **Skill Gap Analysis**: Leverages embeddings to find semantic similarities between skills
-- **Career Roadmaps**: Combines template-based approaches with LLM-generated personalized content
-- **PDF Analysis**: Extracts text, stores in vector database, and enables question-answering
-- **Chatbot**: Uses RAG to provide accurate answers based on knowledge base and conversation history
+## 🔍 RAG Implementation
 
-### Data Flow
-1. User interacts with Streamlit frontend
-2. Application loads cached AI models on first run
-3. User inputs (resumes, job descriptions, questions) are processed
-4. Relevant data retrieved from vector database using FAISS
-5. LLM generates personalized responses based on context
-6. Results displayed with visualizations and recommendations
+The Placement Bot implements Retrieval-Augmented Generation (RAG) in specific modules to enhance functionality with contextual information:
+
+### RAG-Enabled Modules
+- **Resume Analyzer**: Stores and retrieves resume embeddings for semantic search
+- **PDF Analyzer**: Analyzes and stores document content for question answering
+- **Placement Chatbot**: Retrieves relevant information from knowledge base for contextual responses
+
+### Non-RAG Modules
+- **Skill Gap Analysis**: Uses AI-powered analysis without vector database retrieval
+- **Career Roadmap Generator**: Generates personalized roadmaps without vector database retrieval
+
+## 📊 Model Information
+
+### Language Models (API-based)
+- **Primary**: Microsoft Phi-3 Mini (4k) - Accessed via Hugging Face API
+- **Fallback**: DistilGPT-2 - Accessed via Hugging Face API
+
+### Embedding Models (API-based)
+- **Sentence Embeddings**: all-MiniLM-L6-v2 - Accessed via Hugging Face API
+
+### Specialized Models (API-based)
+- **Sentiment Analysis**: twitter-roberta-base-sentiment-latest - Accessed via Hugging Face API
+- **Named Entity Recognition**: bert-large-cased-finetuned-conll03-english - Accessed via Hugging Face API
+
+### Vector Database
+- **FAISS**: For efficient similarity search and clustering
+- **SQLite**: For metadata storage
+
+## 🔒 Privacy and Security
+
+- **API Processing**: All AI model inference is performed via Hugging Face API
+- **No Local Storage**: Models are not downloaded or stored locally
+- **Data Privacy**: Only text prompts are sent to Hugging Face API for inference
+- **No Data Storage**: Hugging Face does not store your prompts or responses
+- **Environment Variables**: API keys are stored locally in `.env` file (not committed to git)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

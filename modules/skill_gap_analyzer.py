@@ -21,23 +21,28 @@ except ImportError:
         ModelManager = None
         MODEL_MANAGER_AVAILABLE = False
 
-# Handle vector database components import
-try:
-    from utils.vector_db_manager import VectorDBManager, is_vector_db_available
-    VECTOR_DB_AVAILABLE = True
-except ImportError:
-    try:
-        from vector_db_manager import VectorDBManager, is_vector_db_available
-        VECTOR_DB_AVAILABLE = True
-    except ImportError:
-        VectorDBManager = None
-        is_vector_db_available = lambda: False
-        VECTOR_DB_AVAILABLE = False
+# Remove vector database components import as RAG should only be used in specific modules
+# try:
+#     from utils.vector_db_manager import VectorDBManager, is_vector_db_available
+#     VECTOR_DB_AVAILABLE = True
+# except ImportError:
+#     try:
+#         from vector_db_manager import VectorDBManager, is_vector_db_available
+#         VECTOR_DB_AVAILABLE = True
+#     except ImportError:
+#         VectorDBManager = None
+#         is_vector_db_available = lambda: False
+#         VECTOR_DB_AVAILABLE = False
+
+# Set vector database components to None
+VectorDBManager = None
+is_vector_db_available = lambda: False
+VECTOR_DB_AVAILABLE = False
 
 class SkillGapAnalyzer:
     """Analyzes skill gaps and provides learning recommendations
-    This analyzer combines skill gap identification with LLM-powered recommendations
-    and vector database storage to provide personalized learning paths.
+    This analyzer identifies skill gaps and provides learning recommendations
+    without using vector database or RAG capabilities.
     """
     
     def __init__(self):
@@ -53,21 +58,9 @@ class SkillGapAnalyzer:
             self.model_manager = None
             print("Warning: ModelManager not available. Some features will be limited.")
         
-        # Use VectorDBManager if available, otherwise set to None
-        # This enables semantic search and storage capabilities for learning resources
-        if VECTOR_DB_AVAILABLE and VectorDBManager and is_vector_db_available():
-            try:
-                self.vector_db_manager = VectorDBManager()
-                self.vector_db = self.vector_db_manager.vector_db if hasattr(self.vector_db_manager, 'vector_db') else None
-                print("✅ Vector database manager initialized for Skill Gap Analyzer")
-            except Exception as e:
-                print(f"Warning: Failed to initialize VectorDBManager: {e}. Some features will be limited.")
-                self.vector_db_manager = None
-                self.vector_db = None
-        else:
-            self.vector_db_manager = None
-            self.vector_db = None
-            print("Warning: VectorDBManager not available. Some features will be limited.")
+        # Set vector database manager to None
+        self.vector_db_manager = None
+        self.vector_db = None
         
         # Industry skill requirements database
         self.industry_skills = {

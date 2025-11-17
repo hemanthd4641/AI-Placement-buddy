@@ -8,5 +8,15 @@
     "downloaded": true,
     "download_time": 1761397932.957063,
     "version": "1.0"
+  },
+  "language_model": {
+    "downloaded": true,
+    "download_time": 1763357984.8834596,
+    "version": "1.0"
+  },
+  "ner_model": {
+    "downloaded": true,
+    "download_time": 1763358410.0817876,
+    "version": "1.0"
   }
 }
