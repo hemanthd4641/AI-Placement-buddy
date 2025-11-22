@@ -87,20 +87,13 @@ except ImportError:
 from io import BytesIO
 import base64
 
-# Import vector database components
-try:
-    from utils.vector_db_manager import VectorDBManager, is_vector_db_available
-except ImportError:
-    try:
-        from vector_db_manager import VectorDBManager, is_vector_db_available
-    except ImportError:
-        VectorDBManager = None
-        is_vector_db_available = lambda: False
+# Vector database components removed - RAG should only be used in PDF Analyzer and Chatbot
+VectorDBManager = None
+is_vector_db_available = lambda: False
 
 class ResumeAnalyzer:
     """Analyzes resumes for ATS compatibility and provides feedback
-    This analyzer combines traditional resume analysis with vector database storage
-    to provide enhanced semantic search and retrieval capabilities.
+    This analyzer provides resume analysis without using vector database.
     """
     
     def __init__(self):
@@ -118,41 +111,11 @@ class ResumeAnalyzer:
             self.nlp = None
             print("Warning: ModelManager not available. NLP features will be limited.")
         
-        # Initialize vector database manager for enhanced resume storage and retrieval
-        if VectorDBManager and is_vector_db_available():
-            try:
-                self.vector_db_manager = VectorDBManager()
-                self.vector_db = self.vector_db_manager.vector_db if hasattr(self.vector_db_manager, 'vector_db') else None
-                print("✅ Vector database manager initialized for Resume Analyzer")
-            except Exception as e:
-                print(f"Warning: Failed to initialize VectorDBManager: {e}. Some features will be limited.")
-                self.vector_db_manager = None
-                self.vector_db = None
-        else:
-            self.vector_db_manager = None
-            self.vector_db = None
-            print("Warning: VectorDBManager not available. Some features will be limited.")
+        # Vector database manager removed - RAG should only be used in PDF Analyzer and Chatbot
+        # Vector DB removed: not used in ResumeAnalyzer
 
         # Helper cache for template texts
         self._template_cache: Dict[str, str] = {}
-
-    def _get_template_text(self, template_for: str) -> str:
-        """Retrieve a template text from vector DB for the given feature key.
-        Falls back to empty string if not available.
-        """
-        try:
-            if template_for in self._template_cache:
-                return self._template_cache[template_for]
-            if self.vector_db_manager and hasattr(self.vector_db_manager, 'search_templates'):
-                templates = self.vector_db_manager.search_templates(template_for, top_k=1)
-                if templates:
-                    md = templates[0].get('metadata', {})
-                    text = (md.get('template') or md.get('excerpt') or '').strip()
-                    self._template_cache[template_for] = text
-                    return text
-        except Exception:
-            pass
-        return ""
         
         # More comprehensive check for matplotlib availability
         self.matplotlib_available = False
@@ -362,6 +325,11 @@ Certifications (if applicable):
                 ]
             }
         }
+    
+    def _get_template_text(self, template_for: str) -> str:
+        """Stub for template text retrieval (vector DB removed)."""
+        # Always return empty string or a static template if needed
+        return ""
     
     def extract_text_from_pdf(self, file_path):
         """Extract text from PDF file"""
@@ -1674,10 +1642,7 @@ Focus on:
                 industry
             )
             
-            # Enhance analysis with vector database context
-            if self.vector_db_manager:
-                results = self.enhance_analysis_with_vector_db(text, results)
-            # Per new requirements, do NOT store generated results into vector DB
+            # Vector database enhancement removed - RAG only for PDF Analyzer and Chatbot
             
             return results
             
@@ -2474,114 +2439,4 @@ Focus on:
             'hr_questions': hr_questions
         }
     
-    def store_resume_analysis(self, resume_text: str, analysis_results: Dict[str, Any]) -> str:
-        """Store resume analysis results in vector database
-        
-        Args:
-            resume_text (str): The original resume text
-            analysis_results (Dict[str, Any]): The analysis results to store
-            
-        Returns:
-            str: Document ID of the stored analysis
-        """
-        if not self.vector_db_manager:
-            print("Warning: Vector database not available for storing resume analysis")
-            return None
-            
-        try:
-            # Create metadata with analysis results
-            metadata = {
-                'type': 'resume_analysis',
-                'analysis_date': datetime.now().isoformat(),
-                'ats_score': analysis_results.get('ats_score', 0),
-                'skills': analysis_results.get('skills', {}),
-                'summary': analysis_results.get('summary', ''),
-                'suggestions': analysis_results.get('suggestions', []),
-                'keywords': analysis_results.get('keywords', [])
-            }
-            
-            # Add resume to vector database
-            doc_id = self.vector_db_manager.add_resume(resume_text, metadata)
-            print(f"✅ Resume analysis stored in vector database with ID: {doc_id}")
-            return doc_id
-        except Exception as e:
-            print(f"Error storing resume analysis in vector database: {e}")
-            return None
-    
-    def search_similar_resumes(self, query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Search for similar resumes using vector database
-        
-        Args:
-            query_text (str): Query text to search for similar resumes
-            top_k (int): Number of similar resumes to return
-            
-        Returns:
-            List[Dict[str, Any]]: List of similar resumes with scores and metadata
-        """
-        if not self.vector_db_manager:
-            print("Warning: Vector database not available for searching similar resumes")
-            return []
-            
-        try:
-            # Search for similar resumes
-            results = self.vector_db_manager.search_similar_resumes(query_text, top_k)
-            print(f"✅ Found {len(results)} similar resumes")
-            return results
-        except Exception as e:
-            print(f"Error searching similar resumes in vector database: {e}")
-            return []
-    
-    def enhance_analysis_with_vector_db(self, resume_text: str, initial_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Enhance resume analysis by combining LLM results with vector database retrieval
-        
-        Args:
-            resume_text (str): The original resume text
-            initial_analysis (Dict[str, Any]): Initial analysis from LLM
-            
-        Returns:
-            Dict[str, Any]: Enhanced analysis combining LLM and vector database results
-        """
-        if not self.vector_db_manager:
-            print("Warning: Vector database not available for enhancing analysis")
-            return initial_analysis
-            
-        try:
-            # Search for similar professional resumes to get industry benchmarks
-            similar_resumes = self.search_similar_resumes(resume_text, top_k=3)
-            
-            # Add professional resume insights to the analysis
-            enhanced_analysis = initial_analysis.copy()
-            enhanced_analysis['professional_benchmarks'] = similar_resumes
-            
-            # Get industry-specific suggestions from professional resumes
-            if similar_resumes:
-                # Extract skills from professional resumes for comparison
-                professional_skills = []
-                for resume in similar_resumes:
-                    metadata = resume.get('metadata', {})
-                    if 'skills' in metadata:
-                        professional_skills.extend(metadata['skills'])
-                
-                # Merge any available suggestions/recommendations from professional resumes
-                aggregated_suggestions = []
-                for resume in similar_resumes:
-                    md = resume.get('metadata', {})
-                    recs = md.get('suggestions') or md.get('recommendations') or []
-                    if isinstance(recs, list):
-                        aggregated_suggestions.extend(recs)
-                if aggregated_suggestions:
-                    current_recs = set(enhanced_analysis.get('recommendations', []))
-                    enhanced_analysis['recommendations'] = list(current_recs.union(set(aggregated_suggestions)))
-                
-                # Suggest skills from professional resumes not in user resume
-                user_skills = set(initial_analysis.get('skills', []))
-                suggested_skills = [skill for skill in set(professional_skills) if skill not in user_skills]
-                enhanced_analysis['suggested_skills_from_professionals'] = suggested_skills[:10]
-            
-            print("✅ Resume analysis enhanced with professional benchmarks from vector database")
-            return enhanced_analysis
-        except Exception as e:
-            print(f"Error enhancing analysis with vector database: {e}")
-            return initial_analysis
-
-            return initial_analysis
+    # Vector database methods removed - RAG only for PDF Analyzer and Chatbot

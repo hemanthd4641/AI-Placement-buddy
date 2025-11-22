@@ -15,6 +15,85 @@ from utils.model_manager import ModelManager
 
 class CareerRoadmapGenerator:
     """Generates personalized career roadmaps with essential features"""
+
+    def process_nlp_prompt(self, prompt: str, chat_history: Optional[list] = None) -> dict:
+        """
+        Process a free-form NLP prompt for the Career Roadmap chatbot.
+        Supports:
+        - Role/skill roadmap requests ("roadmap for data scientist", "how to learn Docker?")
+        - Follow-up Q&A ("What is the best resource for X?", "How long will it take?")
+        - Learning resource suggestions
+        Returns a dict: {"type": ..., "content": ...}
+        """
+        chat_history = chat_history or []
+        # 1. Try to detect if the prompt is a roadmap request or a Q&A/resource request
+        import re
+        roadmap_keywords = ["roadmap", "become", "learn", "how do i", "how to", "master", "get started", "guide", "path"]
+        is_roadmap = any(k in prompt.lower() for k in roadmap_keywords)
+        # 2. If roadmap, extract role/skill/timeline if possible
+        if is_roadmap:
+            # Use LLM-based parser when available for robust extraction
+            target = None
+            timeline = None
+            experience_level = None
+            primary_goal = None
+
+            if self.model_manager.models.get('lm'):
+                try:
+                    parsed = self._llm_parse_prompt(prompt)
+                    if isinstance(parsed, dict):
+                        target = parsed.get('target')
+                        timeline = parsed.get('timeline_months')
+                        experience_level = parsed.get('experience_level')
+                        primary_goal = parsed.get('primary_goal')
+                except Exception:
+                    # fall back to regex extraction below
+                    pass
+
+            # Fallback regex extraction when LLM parser isn't available or failed
+            if not timeline:
+                timeline_match = re.search(r'in (\d+) (month|months|year|years)', prompt.lower())
+                timeline = 12
+                if timeline_match:
+                    num = int(timeline_match.group(1))
+                    unit = timeline_match.group(2)
+                    timeline = num * 12 if 'year' in unit else num
+
+            if not target:
+                role_skill_match = re.search(r'roadmap for ([\w\s\-]+)', prompt.lower())
+                if role_skill_match:
+                    target = role_skill_match.group(1).strip()
+                else:
+                    m = re.search(r'(become|learn|master) ([\w\s\-]+)', prompt.lower())
+                    target = m.group(2).strip() if m else prompt.strip()
+
+            # Use default values for other fields
+            experience_level = (experience_level or 'beginner').lower()
+            primary_goal = primary_goal or 'Skill Development'
+
+            # Call generate_roadmap
+            roadmap = self.generate_roadmap(target, experience_level, timeline, primary_goal)
+            return {"type": "roadmap", "content": roadmap}
+        # 3. Otherwise, treat as Q&A or resource request
+        else:
+            # Compose context from chat history (last roadmap if present)
+            context = ""
+            for msg in reversed(chat_history or []):
+                if isinstance(msg, dict) and msg.get("type") == "roadmap":
+                    context = msg["content"]
+                    break
+            # Compose Gemini prompt
+            gemini_prompt = (
+                "You are an expert career mentor. "
+                "Answer the user's question or provide learning resources.\n"
+            )
+            if context:
+                gemini_prompt += f"Here is the user's current roadmap context (JSON):\n{context}\n"
+            gemini_prompt += f"User question: {prompt}\n"
+            gemini_prompt += "If the user asks for resources, provide 2-3 high-quality, up-to-date links (courses, books, videos) with a short description for each."
+            # Call Gemini LLM
+            answer = self.model_manager.generate_text(gemini_prompt, max_length=800)
+            return {"type": "qa", "content": answer.strip()}
     
     def __init__(self):
         # Initialize model manager for LLM capabilities
@@ -540,6 +619,84 @@ class CareerRoadmapGenerator:
             }
         }
         
+    def _llm_parse_prompt(self, prompt: str) -> dict:
+        """Use the LLM to parse a free-form prompt into structured fields.
+
+        Returns a dict with possible keys: intent, target, timeline_months, experience_level, primary_goal
+        """
+        if not self.model_manager.models.get('lm'):
+            return {}
+
+        parse_prompt = (
+            "You are a JSON extractor. Given a user's free-form request about career roadmaps or learning a skill, "
+            "extract the following fields as JSON: {\"intent\": \"roadmap|qa\", \"target\": \"role or skill\", \"timeline_months\": number or null, \"experience_level\": \"beginner|intermediate|advanced|null\", \"primary_goal\": \"Career Change|Promotion|Skill Development|null\"}.\n"
+            "Return timeline in MONTHS (integer) when possible. Normalize experience_level to one of: beginner, intermediate, advanced, or null.\n"
+            "Examples: \n"
+            "  - 'Roadmap to become a data scientist in 6 months' -> timeline_months: 6, intent: roadmap, target: data scientist\n"
+            "  - 'How to learn Docker efficiently?' -> timeline_months: null, intent: roadmap, target: Docker\n"
+            "  - 'I want to switch careers to backend engineering in one year' -> timeline_months: 12\n"
+            "Respond ONLY with valid JSON. If a field is not present, set it to null.\n\n"
+            "User: " + prompt
+        )
+
+        resp = self.model_manager.generate_text(parse_prompt, max_length=400)
+        # Try to extract JSON
+        try:
+            s = resp
+            json_start = s.find('{')
+            json_end = s.rfind('}') + 1
+            if json_start != -1 and json_end > json_start:
+                parsed = json.loads(s[json_start:json_end])
+                # normalize keys
+                out = {}
+                out['intent'] = parsed.get('intent')
+                out['target'] = parsed.get('target')
+                # Try to coerce timeline to int if possible
+                tl = parsed.get('timeline_months')
+                try:
+                    if isinstance(tl, str) and tl.isdigit():
+                        tl = int(tl)
+                    elif isinstance(tl, float):
+                        tl = int(round(tl))
+                    elif isinstance(tl, str):
+                        # allow values like "6 months" or "1 year"
+                        m = re.search(r"(\d+)", tl)
+                        tl = int(m.group(1)) if m else None
+                except Exception:
+                    tl = None
+                out['timeline_months'] = tl
+                # Normalize experience level
+                out['experience_level'] = None if parsed.get('experience_level') is None else str(parsed.get('experience_level')).lower()
+                out['primary_goal'] = parsed.get('primary_goal')
+                # If timeline missing, try to extract heuristically from text
+                if not out.get('timeline_months'):
+                    out['timeline_months'] = self._extract_timeline_from_text(prompt)
+
+                # If experience level missing/ambiguous, normalize from prompt
+                if not out.get('experience_level'):
+                    out['experience_level'] = self._normalize_experience_level(prompt)
+
+                return out
+        except Exception:
+            pass
+        return {}
+
+    def summarize_roadmap(self, roadmap: Dict[str, Any]) -> str:
+        """Return a 2-3 sentence natural-language summary of the roadmap using the LLM."""
+        try:
+            summary_prompt = (
+                "You are an expert career mentor. Summarize the following career roadmap in 2-3 concise sentences, "
+                "highlighting the main phases and the best next action for the user. Keep it actionable.\n\nRoadmap JSON:\n"
+                + json.dumps(roadmap)
+            )
+            return self.model_manager.generate_text(summary_prompt, max_length=300).strip()
+        except Exception:
+            # Simple fallback summary
+            try:
+                phases = [p.get('name') for p in roadmap.get('phases', [])][:3]
+                return f"This roadmap contains phases: {', '.join(phases)}. Start with the first phase and complete the listed projects to build a portfolio. Review resources for each phase and practice with the suggested projects."
+            except Exception:
+                return "A personalized roadmap was generated. Review the phases and recommended resources to begin."
         # Default roadmap for roles not in templates
         self.default_roadmap = {
             'beginner': {
@@ -547,7 +704,6 @@ class CareerRoadmapGenerator:
                     {
                         'name': 'Foundational Skills (Months 1-4)',
                         'duration': '4 months',
-                        'skills': ['Industry Basics', 'Core Tools', 'Fundamental Concepts'],
                         'resources': [
                             {
                                 'name': 'Industry Fundamentals Course',
@@ -626,6 +782,62 @@ class CareerRoadmapGenerator:
     def _get_template_text(self, template_for: str) -> str:
         """Fetch a template (stub method since RAG is not used in this module)."""
         return ""
+
+    def _extract_timeline_from_text(self, text: str) -> Optional[int]:
+        """Heuristic extraction and normalization of timeline expressions in free-form text.
+
+        Returns timeline in months (int) or None if not found.
+        Supports expressions like:
+        - '6 months', '6 month', 'one year', '1 year', 'half year', 'half a year'
+        - ranges: '3-6 months' -> average (rounded)
+        - fuzzy terms: 'a few months' -> 3, 'couple months' -> 2
+        """
+        text_low = (text or "").lower()
+
+        # Common numeric regex: 'in 6 months', '6 months', '1 year'
+        m = re.search(r"(\d+)\s*[-–—]?\s*(\d+)?\s*(month|months|year|years)", text_low)
+        if m:
+            first = int(m.group(1))
+            second = m.group(2)
+            unit = m.group(3)
+            if second:
+                second = int(second)
+                # average range
+                val = int(round((first + second) / 2))
+            else:
+                val = first
+            if 'year' in unit:
+                return val * 12
+            return val
+
+        # explicit words
+        if 'half year' in text_low or 'half a year' in text_low or 'six months' in text_low:
+            return 6
+        if 'one year' in text_low or '1 year' in text_low or 'a year' in text_low:
+            return 12
+        if 'couple months' in text_low:
+            return 2
+        if 'few months' in text_low or 'a few months' in text_low:
+            return 3
+        if 'quarter' in text_low:
+            return 3
+
+        # try to find standalone months/years mention without digits (e.g., 'months' alone)
+        if re.search(r"\b(months|month)\b", text_low) and not re.search(r"\b(\d+)\b", text_low):
+            return None
+
+        return None
+
+    def _normalize_experience_level(self, text: str) -> Optional[str]:
+        """Normalize free-form experience mentions to beginner/intermediate/advanced or None."""
+        t = (text or "").lower()
+        if any(k in t for k in ['beginner', 'entry', 'junior', 'new to', 'no experience']):
+            return 'beginner'
+        if any(k in t for k in ['intermediate', 'mid', 'mid-level', 'associate', 'some experience']):
+            return 'intermediate'
+        if any(k in t for k in ['advanced', 'senior', 'expert', 'proficient', 'extensive experience']):
+            return 'advanced'
+        return None
     
     def _extract_skills_from_text(self, text: str) -> List[str]:
         """Extract skills from text using NER and keyword matching"""
@@ -1108,7 +1320,6 @@ Return ONLY valid JSON as:
                 response = self.model_manager.generate_text(prompt, max_length=2000)
                 
                 # Try to parse JSON from response
-                import json
                 try:
                     # Extract JSON from response if it contains other text
                     json_start = response.find('{')
@@ -1608,4 +1819,4 @@ Return ONLY valid JSON as:
             Dict[str, Any]: Unchanged roadmap since RAG is not used in this module
         """
         print("Warning: Vector database not available for enhancing roadmap since RAG is not used in this module")
-        return roadmap
+        # Removed stray return at end of file

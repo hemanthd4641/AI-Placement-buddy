@@ -14,6 +14,7 @@ from typing import List, Dict, Any, Optional
 import re
 import json
 import logging
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -140,35 +141,86 @@ class PDFAnalyzer:
         if not self.vector_db_manager:
             print("Warning: Vector database not available for storing PDF content")
             return None
-            
+
         try:
-            # Create metadata with PDF information
+            # Prepare base metadata for the whole document
+            doc_id = hashlib.sha256(pdf_text.encode()).hexdigest()[:32]
             pdf_metadata = {
-                'type': 'pdf_content',
+                'type': 'pdf_document',
                 'file_name': Path(file_path).name,
                 'file_path': file_path,
                 'word_count': len(pdf_text.split()),
                 'character_count': len(pdf_text),
-                'extraction_date': datetime.now().isoformat()
+                'extraction_date': datetime.now().isoformat(),
+                'document_id': doc_id,
             }
-            
-            # Add an excerpt so we can use it later for RAG prompts
+
+            # Add overall excerpt for document-level searches
             try:
                 cleaned_text = self._clean_text(pdf_text)
-                # Build a concise excerpt using first meaningful paragraphs
-                paragraphs = [p.strip() for p in cleaned_text.split('\n\n') if len(p.strip()) > 60]
-                excerpt_source = ' '.join(paragraphs[:2]) if paragraphs else cleaned_text
-                pdf_metadata['excerpt'] = excerpt_source[:800]
+                paragraphs = [p.strip() for p in cleaned_text.split('\n\n') if len(p.strip()) > 40]
+                excerpt_source = ' '.join(paragraphs[:3]) if paragraphs else cleaned_text
+                pdf_metadata['excerpt'] = excerpt_source[:1200]
             except Exception:
-                pdf_metadata['excerpt'] = self._clean_text(pdf_text[:800])
+                pdf_metadata['excerpt'] = self._clean_text(pdf_text[:1200])
 
             # Add any additional metadata
             if metadata:
                 pdf_metadata.update(metadata)
-            
-            # Add PDF content to vector database
-            doc_id = self.vector_db_manager.add_knowledge_item(pdf_text, pdf_metadata)
-            print(f"✅ PDF content stored in vector database with ID: {doc_id}")
+
+            # Store a top-level document entry to allow document-level lookup
+            try:
+                top_md = dict(pdf_metadata)
+                top_md['type'] = 'pdf_document'
+                top_md['title'] = Path(file_path).name
+                self.vector_db_manager.add_knowledge_item(f"Document: {Path(file_path).name}\n\n{pdf_metadata.get('excerpt','')}", top_md)
+            except Exception:
+                pass
+
+            # Chunk the document using sliding window with overlap for better retrieval
+            def _create_chunks(text: str, max_chars: int = 1500, overlap: int = 250):
+                paras = self._split_text_into_paragraphs(text)
+                chunks_local = []
+                current = ''
+                for p in paras:
+                    if not p.strip():
+                        continue
+                    if len(current) + len(p) + 2 <= max_chars:
+                        current = (current + '\n\n' + p).strip()
+                    else:
+                        if current:
+                            chunks_local.append(current)
+                        # Start new chunk with overlap from previous chunk's tail
+                        # Keep last `overlap` chars from current if available
+                        tail = current[-overlap:] if len(current) > overlap else current
+                        current = (tail + '\n\n' + p).strip()
+                if current:
+                    chunks_local.append(current)
+                return chunks_local
+
+            chunks = _create_chunks(pdf_text, max_chars=1500, overlap=250)
+
+            stored_count = 0
+            for i, c in enumerate(chunks):
+                try:
+                    chunk_md = {
+                        'type': 'pdf_content',
+                        'file_name': Path(file_path).name,
+                        'file_path': file_path,
+                        'document_id': doc_id,
+                        'chunk_index': i,
+                        'excerpt': self._clean_text(c)[:800]
+                    }
+                    # Merge any user-provided metadata
+                    if metadata:
+                        chunk_md.update(metadata)
+
+                    self.vector_db_manager.add_knowledge_item(c, chunk_md)
+                    stored_count += 1
+                except Exception:
+                    continue
+
+            print(f"✅ Stored PDF document '{Path(file_path).name}' as document_id={doc_id} with {stored_count} chunks")
             return doc_id
         except Exception as e:
             print(f"Error storing PDF content in vector database: {e}")
@@ -194,6 +246,22 @@ class PDFAnalyzer:
             # Filter for PDF content only
             pdf_results = [r for r in results if r.get('metadata', {}).get('type') == 'pdf_content']
             print(f"✅ Found {len(pdf_results)} PDF content results")
+
+            # If vector DB returns few or no PDF results, attempt a paragraph-snippet fallback
+            if len(pdf_results) < 2:
+                try:
+                    snippets = self._find_paragraph_snippets(query, self._last_pdf_text or "", top_k=3)
+                    # Convert snippets to same structure as vector DB results
+                    for idx, s in enumerate(snippets):
+                        pdf_results.append({
+                            'doc_id': f'local-snippet-{idx}',
+                            'score': 0.0,
+                            'metadata': {'type': 'pdf_content', 'excerpt': s[:400]},
+                            'text': s
+                        })
+                except Exception:
+                    pass
+
             return pdf_results
         except Exception as e:
             print(f"Error searching PDF content in vector database: {e}")
@@ -213,6 +281,8 @@ class PDFAnalyzer:
         try:
             # Split text into paragraphs for better context
             paragraphs = self._split_text_into_paragraphs(pdf_text)
+            # Remember last seen pdf_text for fallbacks that need it
+            self._last_pdf_text = pdf_text
             
             # Score paragraphs based on relevance to query
             relevant_paragraphs = []
@@ -563,6 +633,15 @@ Answer:"""
         """
         try:
             parts: List[str] = []
+            # Include a short document summary at the top of the RAG context to help the LLM
+            try:
+                doc_summary = self.summarize_pdf(pdf_text, max_length=300)
+                if doc_summary:
+                    # Keep the summary short relative to max_length
+                    parts.append("[Document Summary]\n" + doc_summary[: max_length // 4])
+            except Exception:
+                # If summarization fails (quota, errors), fall back silently
+                pass
             # 1) Current PDF relevant content
             current_doc_ctx = self._retrieve_enhanced_context(question, pdf_text, max_length=max_length // 2)
             if current_doc_ctx:
@@ -688,6 +767,38 @@ Answer:"""
             # Fallback to simpler approach
             fallback = pdf_text[:max_length]
             return self._clean_text(fallback)
+
+    def _find_paragraph_snippets(self, question: str, pdf_text: str, top_k: int = 3) -> List[str]:
+        """Find paragraph snippets containing question keywords and return small context windows.
+
+        Returns up to `top_k` snippets with neighboring context to improve RAG fallback.
+        """
+        snippets = []
+        try:
+            paragraphs = self._split_text_into_paragraphs(pdf_text)
+            qwords = [w.lower() for w in re.findall(r"\w+", question) if len(w) > 2]
+            scores = []
+            for idx, p in enumerate(paragraphs):
+                pl = p.lower()
+                score = sum(1 for w in qwords if w in pl)
+                if score > 0:
+                    scores.append((score, idx, p))
+
+            scores.sort(key=lambda x: x[0], reverse=True)
+            seen = set()
+            for score, idx, p in scores[: top_k * 2]:
+                if len(snippets) >= top_k:
+                    break
+                # include neighbor paragraphs for context
+                start = max(0, idx - 1)
+                end = min(len(paragraphs), idx + 2)
+                candidate = '\n\n'.join(paragraphs[start:end])
+                if candidate and candidate not in seen:
+                    snippets.append(candidate)
+                    seen.add(candidate)
+            return snippets
+        except Exception:
+            return snippets
     
     def _focused_qa_approach(self, pdf_text: str, question: str, max_length: int = 300) -> str:
         """More focused QA approach for better accuracy"""

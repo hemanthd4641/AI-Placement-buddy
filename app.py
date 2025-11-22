@@ -7,6 +7,7 @@ import streamlit as st
 import sys
 import time
 import json
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -299,6 +300,32 @@ def initialize_session_state():
     if 'user_profile' not in st.session_state:
         st.session_state.user_profile = {}
 
+
+def _linkify(text: str) -> str:
+    """Convert plain URLs in text to HTML anchor tags for clickable links in chat messages."""
+    if not text:
+        return ""
+    # Simple URL regex
+    url_re = re.compile(r"(https?://[\w\-._~:/?#\[\]@!$&'()*+,;=%]+)")
+    def _replace(m):
+        url = m.group(1)
+        return f'<a href="{url}" target="_blank">{url}</a>'
+    # Escape angle brackets lightly
+    safe = text.replace('<', '&lt;').replace('>', '&gt;')
+    return url_re.sub(_replace, safe)
+
+
+def _stream_text(container, text: str, delay: float = 0.08):
+    """Simple pseudo-streaming: show text sentence-by-sentence in the given Streamlit container."""
+    if not text:
+        return
+    parts = re.split(r'(?<=[\.\?!])\s+', text)
+    out = ""
+    for p in parts:
+        out = (out + " " + p).strip()
+        container.markdown(f"<div class=\"chat-message assistant-message\">{_linkify(out)}</div>", unsafe_allow_html=True)
+        time.sleep(delay)
+
 def load_models():
     """Load and cache models"""
     if not st.session_state.models_loaded:
@@ -342,12 +369,7 @@ def load_models():
                 else:
                     st.warning("CareerRoadmapGenerator not available.")
 
-                # Load RAG Chatbot
-                my_bar.progress(95, text="Loading Placement Chatbot (RAG)...")
-                if RAGChatbot is not None:
-                    st.session_state.rag_chatbot = RAGChatbot()
-                else:
-                    st.warning("RAGChatbot not available.")
+                # Placement Chatbot (RAG) removed — no initialization performed
 
                 # Ensure core templates and interview questions are present in the vector DB
                 try:
@@ -1043,70 +1065,89 @@ def show_career_roadmap():
     </div>
     """, unsafe_allow_html=True)
     
-    # Input collection
-    st.markdown('<div class="glass-card"><h3>Input Information</h3>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        target_role = st.text_input("Target Role/Position", placeholder="e.g., Software Developer, Data Scientist", key="roadmap_target_role")
-        
-        experience_level = st.selectbox(
-            "Current Experience Level",
-            ["Beginner", "Intermediate", "Advanced"],
-            key="roadmap_experience_level"
-        )
-        
-        current_skills = st.text_area("Current Skills (comma-separated)", placeholder="e.g., Python, JavaScript, SQL", key="roadmap_current_skills", height=100)
-        
-    with col2:
-        timeline = st.slider(
-            "Timeline Preference (months)",
-            min_value=3,
-            max_value=24,
-            value=12,
-            key="roadmap_timeline"
-        )
-        
-        primary_goal = st.radio(
-            "Primary Goal",
-            ["Career Change", "Promotion", "Skill Development"],
-            key="roadmap_primary_goal"
-        )
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Initialize session state for results
+    # Chatbot-style interface for Career Roadmap (NLP prompt)
+    st.markdown('<div class="glass-card"><h3>Career Roadmap Chatbot</h3><p>Ask for a role roadmap or how to learn a specific skill. Example: "Roadmap to become a backend developer in 8 months" or "How to learn React".</p></div>', unsafe_allow_html=True)
+
+    # Ensure chat history and roadmap result exist in session state
+    if 'career_chat_history' not in st.session_state:
+        st.session_state.career_chat_history = []  # list of {role, content}
     if 'roadmap_result' not in st.session_state:
         st.session_state.roadmap_result = None
-    
-    # Generate roadmap button
-    if st.button("Generate Career Roadmap", type="primary", key="generate_roadmap_btn"):
-        if target_role:
-            with st.spinner("Generating your personalized career roadmap..."):
-                try:
-                    # Parse current skills
-                    skills_list = [skill.strip() for skill in current_skills.split(',')] if current_skills else None
-                    
-                    # Generate roadmap
-                    generator = st.session_state.career_roadmap_generator
-                    result = generator.generate_roadmap(
-                        target_role, 
-                        experience_level.lower(), 
-                        timeline, 
-                        primary_goal,
-                        skills_list
-                    )
-                    
-                    # Store result in session state
-                    st.session_state.roadmap_result = result
-                    
-                    st.success("✅ Career roadmap generated successfully!")
-                    
-                except Exception as e:
-                    st.error(f"Error generating career roadmap: {str(e)}")
+
+    # Input area: add Send, Regenerate, Clarify buttons
+    col1, col2, col3 = st.columns([4,1,1])
+    with col1:
+        user_input = st.text_input("Ask about career roadmap or learning a skill", key="career_chat_input", placeholder="e.g., Roadmap to become a data scientist in 6 months")
+    with col2:
+        send = st.button("Send", type="primary", key="career_chat_send")
+    with col3:
+        regenerate = st.button("Regenerate Last", key="career_chat_regen")
+        clarify = st.button("Ask Clarifying Qs", key="career_chat_clarify")
+
+    # Display recent chat messages (linkify URLs)
+    if st.session_state.career_chat_history:
+        for msg in st.session_state.career_chat_history[-12:]:
+            css_class = 'assistant-message' if msg.get('role') == 'assistant' else 'user-message'
+            content_html = _linkify(msg.get("content"))
+            st.markdown(f'<div class="chat-message {css_class}">{content_html}</div>', unsafe_allow_html=True)
+
+    def _handle_user_prompt(prompt_text: str):
+        st.session_state.career_chat_history.append({'role': 'user', 'content': prompt_text})
+        try:
+            generator = st.session_state.get('career_roadmap_generator')
+            if generator is None:
+                st.warning("Career roadmap generator not initialized.")
+                return
+            with st.spinner("Thinking..."):
+                resp = generator.process_nlp_prompt(prompt_text, chat_history=st.session_state.career_chat_history)
+
+            if resp.get('type') == 'roadmap':
+                # store roadmap for detailed display
+                st.session_state.roadmap_result = resp.get('content')
+                target = st.session_state.roadmap_result.get('metadata', {}).get('target_role', 'your goal')
+                assistant_text = f"I've generated a roadmap for {target}. Use the detailed view below to explore phases, resources, and projects."
+            else:
+                assistant_text = resp.get('content', '(No answer)')
+
+            # Show assistant text with pseudo-streaming for nicer UX
+            st.session_state.career_chat_history.append({'role': 'assistant', 'content': assistant_text})
+        except Exception as e:
+            st.error(f"Error processing prompt: {e}")
+
+    # Handle Send
+    if send and user_input:
+        _handle_user_prompt(user_input)
+
+    # Handle Regenerate: find last user prompt and resend
+    if regenerate:
+        last_user = None
+        for msg in reversed(st.session_state.career_chat_history):
+            if msg.get('role') == 'user':
+                last_user = msg.get('content')
+                break
+        if last_user:
+            _handle_user_prompt(last_user)
         else:
-            st.warning("Please enter your target role/position.")
+            st.info('No previous user prompt to regenerate.')
+
+    # Handle Clarify: ask LLM to propose clarifying questions for the last user prompt
+    if clarify:
+        last_user = None
+        for msg in reversed(st.session_state.career_chat_history):
+            if msg.get('role') == 'user':
+                last_user = msg.get('content')
+                break
+        if last_user:
+            generator = st.session_state.get('career_roadmap_generator')
+            if generator is None:
+                st.warning("Career roadmap generator not initialized.")
+            else:
+                try:
+                    prompt = f"Given the user's request: \"{last_user}\", propose 2 short clarifying questions to better understand the user's goal, timeline, or context. Return them as short bullet points."
+                    clarifying = generator.model_manager.generate_text(prompt, max_length=200)
+                    st.session_state.career_chat_history.append({'role': 'assistant', 'content': clarifying.strip()})
+                except Exception as e:
+                    st.error(f"Error generating clarifying questions: {e}")
     
     # Display results
     if st.session_state.roadmap_result:
@@ -1288,7 +1329,23 @@ def show_career_roadmap():
                     )
                 except Exception as e:
                     st.error(f"Error exporting as Markdown: {str(e)}")
-        
+            # Compact chat summary button
+            st.markdown("", unsafe_allow_html=True)
+            if st.button("Summarize Roadmap (Chat)"):
+                try:
+                    generator = st.session_state.get('career_roadmap_generator')
+                    if generator is not None and st.session_state.roadmap_result:
+                        summary = generator.summarize_roadmap(st.session_state.roadmap_result)
+                        # Append into career chat history so it's visible in chat UI
+                        if 'career_chat_history' not in st.session_state:
+                            st.session_state.career_chat_history = []
+                        st.session_state.career_chat_history.append({'role': 'assistant', 'content': summary})
+                        st.success("Summary added to chat history")
+                    else:
+                        st.warning("Roadmap or generator not available")
+                except Exception as e:
+                    st.error(f"Error generating summary: {e}")
+
         st.markdown('</div>', unsafe_allow_html=True)
 
 def show_pdf_analyzer():
@@ -1390,50 +1447,138 @@ def show_pdf_analyzer():
                         st.error(f"Error analyzing PDF: {str(e)}")
         
         st.markdown('</div>', unsafe_allow_html=True)
+    with tab2:
+        st.markdown('<div class="glass-card"><h3>Document Summary</h3>', unsafe_allow_html=True)
+        if st.session_state.get('pdf_analysis_result'):
+            result = st.session_state.pdf_analysis_result
+            summary = result.get('summary', '')
+            st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+            st.markdown(f"<h4>Summary</h4><p>{_linkify(summary)}</p>", unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            if st.button("Regenerate Summary"):
+                try:
+                    pdf_analyzer = st.session_state.pdf_analyzer
+                    with st.spinner("Regenerating summary..."):
+                        new_summary = pdf_analyzer.summarize_pdf(result.get('text',''))
+                        st.session_state.pdf_analysis_result['summary'] = new_summary
+                        st.success("Summary regenerated")
+                except Exception as e:
+                    st.error(f"Error regenerating summary: {e}")
+        else:
+            st.info("No analyzed document available. Upload and analyze a PDF first.")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with tab3:
+        st.markdown('<div class="glass-card"><h3>Q&A Chatbot (RAG + LLM)</h3><p>Ask questions about the analyzed document content. The bot will use retrieval-augmented generation (RAG) with the vector database and the LLM to answer.</p></div>', unsafe_allow_html=True)
+
+        # Ensure chat history store exists
+        if 'pdf_chat_history' not in st.session_state:
+            st.session_state.pdf_chat_history = {}
+
+        # Select document to chat about (allow selecting previously stored PDFs)
+        current_doc_id = None
+        current_doc_text = ''
+        try:
+            from utils.vector_db_manager import list_documents, get_document_by_id
+            docs = list_documents(limit=50)
+        except Exception:
+            docs = []
+
+        # Build options for selectbox: prefer recent documents
+        select_options = []
+        id_map = {}
+        # Include currently analyzed document first (if present)
+        if st.session_state.get('pdf_analysis_result'):
+            doc_res = st.session_state.pdf_analysis_result
+            doc_name = doc_res.get('file_name', 'Current Document')
+            doc_id = doc_res.get('document_id')
+            label = f"Current: {doc_name}"
+            select_options.append(label)
+            id_map[label] = doc_id
+            # keep text available for current session doc
+            current_doc_text = doc_res.get('text', '')
+
+        # Add persisted docs
+        for d in docs:
+            title = d.get('title') or d.get('metadata', {}).get('file_name') or d.get('doc_id')[:8]
+            did = d.get('doc_id')
+            label = f"{title} ({did[:8]})"
+            if label in id_map:
+                continue
+            select_options.append(label)
+            id_map[label] = did
+
+        if select_options:
+            chosen_label = st.selectbox("Choose document to chat about:", select_options, key="pdf_doc_selector")
+            current_doc_id = id_map.get(chosen_label)
+            # If chosen doc is the current session doc, keep its full text; otherwise leave empty and rely on RAG excerpts
+            if st.session_state.get('pdf_analysis_result') and current_doc_id and st.session_state.pdf_analysis_result.get('document_id') == current_doc_id:
+                current_doc_text = st.session_state.pdf_analysis_result.get('text','')
+            else:
+                # Try to fetch metadata/excerpt for display
+                try:
+                    md = get_document_by_id(current_doc_id) or {}
+                    excerpt = md.get('metadata', {}).get('excerpt', '')
+                    if excerpt:
+                        st.markdown(f"<div class=\"glass-card\"><strong>Excerpt:</strong><p>{_linkify(excerpt[:1000])}</p></div>", unsafe_allow_html=True)
+                except Exception:
+                    pass
+        else:
+            current_doc_id = None
+            current_doc_text = ''
+
+        # Chat UI
+        if not current_doc_id:
+            st.info("No analyzed document available for chat. Upload and analyze a PDF first.")
+        else:
+            if current_doc_id not in st.session_state.pdf_chat_history:
+                st.session_state.pdf_chat_history[current_doc_id] = []
+
+            # Display chat history
+            for msg in st.session_state.pdf_chat_history[current_doc_id][-20:]:
+                css_class = 'assistant-message' if msg.get('role') == 'assistant' else 'user-message'
+                st.markdown(f'<div class="chat-message {css_class}">{_linkify(msg.get("content"))}</div>', unsafe_allow_html=True)
+
+            # Input
+            q_col1, q_col2 = st.columns([4,1])
+            with q_col1:
+                user_q = st.text_input("Ask a question about the document", key="pdf_chat_input")
+            with q_col2:
+                send_q = st.button("Send", key="pdf_chat_send")
+
+            if send_q and user_q:
+                # Append user message
+                st.session_state.pdf_chat_history[current_doc_id].append({'role':'user','content':user_q})
+                try:
+                    analyzer = st.session_state.pdf_analyzer
+                    with st.spinner("Searching & generating answer..."):
+                        answer = analyzer.answer_question(current_doc_text, user_q)
+                    st.session_state.pdf_chat_history[current_doc_id].append({'role':'assistant','content':answer})
+                except Exception as e:
+                    st.error(f"Error answering question: {e}")
+
+            # Regenerate last answer
+            if st.button("Regenerate Last Answer", key="pdf_chat_regen"):
+                # find last user message
+                history = st.session_state.pdf_chat_history[current_doc_id]
+                last_user = None
+                for m in reversed(history):
+                    if m.get('role') == 'user':
+                        last_user = m.get('content')
+                        break
+                if last_user:
+                    try:
+                        analyzer = st.session_state.pdf_analyzer
+                        with st.spinner("Regenerating answer..."):
+                            answer = analyzer.answer_question(current_doc_text, last_user)
+                        st.session_state.pdf_chat_history[current_doc_id].append({'role':'assistant','content':answer})
+                    except Exception as e:
+                        st.error(f"Error regenerating answer: {e}")
 
 def show_chatbot():
-    """Display RAG Chatbot interface."""
-    st.markdown('<h2 class="main-header">Placement Chatbot (RAG)</h2>', unsafe_allow_html=True)
-    st.markdown('<div class="glass-card"><p>Ask anything about technical skills, DSA, software engineering, or HR interviews. Answers are augmented by your knowledge base.</p></div>', unsafe_allow_html=True)
-
-    if 'chat_history' not in st.session_state:
-        st.session_state.chat_history = []  # list of {role, content}
-
-    # Input area
-    col1, col2 = st.columns([4,1])
-    with col1:
-        user_input = st.text_input("Your question", key="chatbot_user_input", placeholder="e.g., Explain Python decorators with an example")
-    with col2:
-        ask = st.button("Ask", type="primary")
-
-    # Display chat
-    if st.session_state.chat_history:
-        for msg in st.session_state.chat_history[-12:]:
-            css_class = 'assistant-message' if msg['role'] == 'assistant' else 'user-message'
-            st.markdown(f'<div class="chat-message {css_class}"><p>{msg["content"]}</p></div>', unsafe_allow_html=True)
-
-    if ask and user_input:
-        st.session_state.chat_history.append({'role': 'user', 'content': user_input})
-        try:
-            bot = st.session_state.get('rag_chatbot')
-            if bot is None:
-                st.warning("Chatbot not initialized.")
-            else:
-                profile = st.session_state.get('user_profile', {})
-                result = bot.answer(user_input, chat_history=st.session_state.chat_history, user_profile=profile)
-                answer = result.get('answer', '').strip()
-                st.session_state.chat_history.append({'role': 'assistant', 'content': answer or "(No answer)"})
-
-                # Show sources
-                citations = result.get('citations', [])
-                if citations:
-                    with st.expander("Sources used"):
-                        for i, c in enumerate(citations, 1):
-                            st.markdown(f"**{i}. {c.get('title','Source')}** — _{c.get('type','knowledge')}_ (score: {c.get('score',0):.3f})")
-        except Exception as e:
-            st.error(f"Chatbot error: {e}")
-    
-    # Chatbot page has no PDF tabs; it only shows chat UI and citations.
+    """Placement Chatbot feature has been removed from this project."""
+    st.markdown('<h2 class="main-header">Placement Chatbot (Removed)</h2>', unsafe_allow_html=True)
+    st.markdown('<div class="glass-card"><p>The Retrieval-Augmented (RAG) Placement Chatbot has been removed from this project. PDF Analyzer and other core features remain available.</p></div>', unsafe_allow_html=True)
 
 def main():
     """Main application function"""
@@ -1461,8 +1606,7 @@ def main():
                 "PDF Analyzer",
                 # "Cover Letter Generator" removed as per user request
                 "Skill Gap Analysis",
-                "Career Roadmap Generator",
-                "Placement Chatbot"
+                "Career Roadmap Generator"
             ],
             key="main_navigation"  # Add unique key to prevent duplicate ID error
         )
@@ -1479,8 +1623,7 @@ def main():
         show_skill_gap_analysis()
     elif page == "Career Roadmap Generator":
         show_career_roadmap()
-    elif page == "Placement Chatbot":
-        show_chatbot()
+    
     
     # Footer
     st.sidebar.markdown("---")

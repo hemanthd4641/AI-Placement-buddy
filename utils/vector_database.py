@@ -11,7 +11,7 @@ import numpy as np
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import faiss
-from sentence_transformers import SentenceTransformer
+from utils.embeddings import embed_texts
 
 class VectorDatabase:
     """Enhanced vector database for storing and searching document embeddings"""
@@ -21,25 +21,9 @@ class VectorDatabase:
         self.db_dir = Path("vector_db")
         self.db_dir.mkdir(exist_ok=True)
         
-        # Initialize embedding model with error handling
-        try:
-            print("📦 Loading embedding model for vector database...")
-            self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
-            self.dimension = self.embedder.get_sentence_embedding_dimension()
-            print("✅ Vector database embedding model loaded successfully")
-        except Exception as e:
-            print(f"❌ Failed to load embedding model for vector database: {e}")
-            try:
-                # Try fallback model
-                print("🔄 Trying fallback embedding model...")
-                self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
-                self.dimension = 384
-                print("✅ Loaded fallback embedding model")
-            except Exception as fallback_e:
-                print(f"❌ Failed to load fallback embedding model: {fallback_e}")
-                self.embedder = None
-                self.dimension = 384  # Default dimension for MiniLM-L6-v2
-                print("⚠️ Vector database embedding model not available. Using zero vectors as fallback.")
+        # Use embeddings adapter (ModelManager / Gemini preferred)
+        # Default embedding dimension for cloud embeddings (Gemini) is 768
+        self.dimension = 768
         
         # Initialize separate indexes for different document types
         self.resumes_index = None
@@ -131,18 +115,29 @@ class VectorDatabase:
     
     def _get_embedding(self, text: str) -> np.ndarray:
         """Get embedding for text, with fallback to zero vector"""
-        if not self.embedder:
-            # Return zero vector as fallback
-            return np.zeros(self.dimension, dtype='float32')
-        
         try:
-            embedding = self.embedder.encode([text])
-            faiss.normalize_L2(embedding)
-            return embedding.astype('float32')
+            emb = embed_texts([text], dim=self.dimension)
+            # embed_texts may return single row or array
+            emb = np.array(emb, dtype='float32')
+            if emb.ndim == 2:
+                emb = emb[0]
+            # Ensure shape
+            if emb.size != self.dimension:
+                # Resize/pad or truncate
+                arr = np.zeros(self.dimension, dtype='float32')
+                arr[:min(self.dimension, emb.size)] = emb.flatten()[:self.dimension]
+                emb = arr
+            # Normalize
+            try:
+                faiss.normalize_L2(emb.reshape(1, -1))
+            except Exception:
+                norm = np.linalg.norm(emb)
+                if norm > 0:
+                    emb = emb / norm
+            return emb.astype('float32').reshape(1, -1)
         except Exception as e:
             print(f"Error generating embedding: {e}")
-            # Return zero vector as fallback
-            return np.zeros(self.dimension, dtype='float32')
+            return np.zeros((1, self.dimension), dtype='float32')
     
     def add_resume(self, resume_text: str, metadata: Dict[str, Any]) -> str:
         """Add resume to vector database"""

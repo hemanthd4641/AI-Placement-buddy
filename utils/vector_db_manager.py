@@ -1,13 +1,21 @@
 """
-Vector Database Manager - Unified interface for all vector database operations
-This module provides a centralized way to handle vector database operations
-across all features of the Placement Bot.
+Vector Database Manager - PDF-focused interface
+
+This project now limits vector database usage to PDF Analyzer only. To avoid
+accidentally adding resumes, job descriptions, or interview question banks,
+most non-PDF helper methods have been restricted. The manager still provides
+methods for adding/searching 'knowledge' items (used for PDF chunks/resources),
+listing documents, and inspecting metadata.
+
+Use `purge_non_pdf_content(dry_run=True)` to preview non-PDF rows that can be
+removed. To actually delete them, call with `dry_run=False`.
 """
 
 import sys
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import logging
+import json
 
 # Add paths
 sys.path.append(str(Path(__file__).parent))
@@ -117,9 +125,9 @@ class VectorDBManager:
         - excerpt: short snippet for quick context
         Returns count inserted.
         """
-        if not self.is_available():
-            logger.warning("Vector database not available; skipping interview question seeding")
-            return 0
+        # Interview question seeding is disabled under PDF-only policy
+        logger.warning("Interview question seeding is disabled. Vector DB is PDF-only.")
+        return 0
         try:
             if question_bank is None:
                 try:
@@ -196,90 +204,47 @@ class VectorDBManager:
     # Resume Operations
     def add_resume(self, resume_text: str, metadata: Dict[str, Any]) -> Optional[str]:
         """Add a resume to the database"""
-        if not self.is_available():
-            logger.warning("Vector database not available")
-            return None
-            
-        try:
-            doc_id = self.vector_db.add_resume(resume_text, metadata)
-            logger.info(f"Added resume with ID: {doc_id}")
-            return doc_id
-        except Exception as e:
-            logger.error(f"Error adding resume: {e}")
-            return None
+        # Disabled: vector DB is restricted to PDF content only.
+        logger.warning("add_resume is disabled: vector DB restricted to PDF content only")
+        return None
     
     def search_similar_resumes(self, query_text: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Search for similar resumes"""
-        if not self.is_available():
-            logger.warning("Vector database not available")
-            return []
-            
-        try:
-            results = self.vector_db.search_similar_resumes(query_text, top_k)
-            logger.info(f"Found {len(results)} similar resumes")
-            return results
-        except Exception as e:
-            logger.error(f"Error searching similar resumes: {e}")
-            return []
+        logger.warning("search_similar_resumes is disabled: vector DB restricted to PDF content only")
+        return []
     
     # Job Description Operations
     def add_job_description(self, job_text: str, metadata: Dict[str, Any]) -> Optional[str]:
         """Add a job description to the database"""
-        if not self.is_available():
-            logger.warning("Vector database not available")
-            return None
-            
-        try:
-            doc_id = self.vector_db.add_job_description(job_text, metadata)
-            logger.info(f"Added job description with ID: {doc_id}")
-            return doc_id
-        except Exception as e:
-            logger.error(f"Error adding job description: {e}")
-            return None
+        logger.warning("add_job_description is disabled: vector DB restricted to PDF content only")
+        return None
     
     def search_matching_jobs(self, resume_text: str, top_k: int = 10) -> List[Dict[str, Any]]:
         """Search for matching jobs"""
-        if not self.is_available():
-            logger.warning("Vector database not available")
-            return []
-            
-        try:
-            results = self.vector_db.search_matching_jobs(resume_text, top_k)
-            logger.info(f"Found {len(results)} matching jobs")
-            return results
-        except Exception as e:
-            logger.error(f"Error searching matching jobs: {e}")
-            return []
+        logger.warning("search_matching_jobs is disabled: vector DB restricted to PDF content only")
+        return []
     
     # Technical Interview Operations
     def add_technical_question(self, question_text: str, metadata: Dict[str, Any]) -> Optional[str]:
         """Add a technical interview question"""
-        # Add type identifier for technical questions
-        metadata['type'] = 'technical_question'
-        return self.add_knowledge_item(question_text, metadata)
+        logger.warning("add_technical_question is disabled: vector DB restricted to PDF content only")
+        return None
     
     def search_technical_questions(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Search for technical interview questions"""
-        # First get general knowledge search
-        results = self.search_knowledge(query, top_k)
-        # Filter for technical questions
-        technical_results = [r for r in results if r.get('metadata', {}).get('type') == 'technical_question']
-        return technical_results
+        logger.warning("search_technical_questions is disabled: vector DB restricted to PDF content only")
+        return []
     
     # HR Interview Operations
     def add_hr_question(self, question_text: str, metadata: Dict[str, Any]) -> Optional[str]:
         """Add an HR interview question"""
-        # Add type identifier for HR questions
-        metadata['type'] = 'hr_question'
-        return self.add_knowledge_item(question_text, metadata)
+        logger.warning("add_hr_question is disabled: vector DB restricted to PDF content only")
+        return None
     
     def search_hr_questions(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Search for HR interview questions"""
-        # First get general knowledge search
-        results = self.search_knowledge(query, top_k)
-        # Filter for HR questions
-        hr_results = [r for r in results if r.get('metadata', {}).get('type') == 'hr_question']
-        return hr_results
+        logger.warning("search_hr_questions is disabled: vector DB restricted to PDF content only")
+        return []
     
     # Statistics and Utilities
     def get_database_stats(self) -> Dict[str, Any]:
@@ -287,11 +252,15 @@ class VectorDBManager:
         if not self.is_available():
             logger.warning("Vector database not available")
             return {}
-            
         try:
             stats = self.vector_db.get_database_stats()
-            logger.info("Retrieved database stats")
-            return stats
+            # Only expose stats relevant to PDF knowledge
+            return {
+                'knowledge_vectors': stats.get('knowledge_vectors', 0),
+                'resumes_vectors': 0,
+                'jobs_vectors': 0,
+                'documents_by_type': {k: v for k, v in stats.items() if k.endswith('_count')}
+            }
         except Exception as e:
             logger.error(f"Error getting database stats: {e}")
             return {}
@@ -309,6 +278,99 @@ class VectorDBManager:
         except Exception as e:
             logger.error(f"Error getting document by ID: {e}")
             return None
+
+    def purge_non_pdf_content(self, dry_run: bool = True) -> List[Dict[str, Any]]:
+        """List or remove non-PDF content from the metadata DB.
+
+        By default (`dry_run=True`) returns a list of candidate rows that would be
+        removed. If `dry_run=False` the rows will be deleted from the `documents`
+        table. Note: FAISS vector cleanup is not performed automatically.
+        """
+        if not self.is_available():
+            logger.warning("Vector database not available")
+            return []
+        try:
+            cursor = self.conn.cursor()
+            # Select rows whose metadata does not contain a document_id (likely non-PDF knowledge)
+            rows = cursor.execute(
+                "SELECT id, doc_id, doc_type, title, metadata, created_at FROM documents WHERE (doc_type != 'knowledge' OR metadata NOT LIKE '%\"document_id\"%') ORDER BY created_at DESC"
+            ).fetchall()
+
+            candidates = []
+            for row in rows:
+                row_id, doc_id, doc_type, title, metadata_json, created_at = row
+                try:
+                    md = json.loads(metadata_json) if metadata_json else {}
+                except Exception:
+                    md = {}
+                candidates.append({
+                    'row_id': row_id,
+                    'doc_id': doc_id,
+                    'doc_type': doc_type,
+                    'title': title,
+                    'metadata': md,
+                    'created_at': created_at
+                })
+
+            if dry_run:
+                logger.info(f"Purge dry-run: {len(candidates)} non-PDF rows found")
+                return candidates
+
+            # Perform deletion
+            deleted = []
+            for c in candidates:
+                try:
+                    cursor.execute("DELETE FROM documents WHERE id = ?", (c['row_id'],))
+                    deleted.append(c)
+                except Exception as e:
+                    logger.error(f"Failed to delete row {c['row_id']}: {e}")
+            self.conn.commit()
+            logger.info(f"Purged {len(deleted)} non-PDF rows from metadata DB")
+            return deleted
+        except Exception as e:
+            logger.error(f"Error during purge_non_pdf_content: {e}")
+            return []
+
+    def list_documents(self, filter_has_document_id: bool = True, limit: int = 50) -> List[Dict[str, Any]]:
+        """List documents stored in the metadata DB.
+
+        By default, returns knowledge items that contain a 'document_id' field in their metadata
+        (which corresponds to stored PDF chunks / documents).
+        """
+        if not self.is_available():
+            logger.warning("Vector database not available")
+            return []
+        try:
+            cursor = self.conn.cursor()
+            if filter_has_document_id:
+                # Simple JSON text search on metadata column for document_id key
+                rows = cursor.execute(
+                    "SELECT doc_id, doc_type, title, metadata, created_at FROM documents WHERE doc_type = 'knowledge' AND metadata LIKE '%\"document_id\"%' ORDER BY created_at DESC LIMIT ?",
+                    (limit,)
+                ).fetchall()
+            else:
+                rows = cursor.execute(
+                    "SELECT doc_id, doc_type, title, metadata, created_at FROM documents ORDER BY created_at DESC LIMIT ?",
+                    (limit,)
+                ).fetchall()
+
+            results = []
+            for doc_id, doc_type, title, metadata_json, created_at in rows:
+                try:
+                    md = json.loads(metadata_json) if metadata_json else {}
+                except Exception:
+                    md = {}
+                results.append({
+                    'doc_id': doc_id,
+                    'doc_type': doc_type,
+                    'title': title,
+                    'metadata': md,
+                    'created_at': created_at
+                })
+            return results
+        except Exception as e:
+            logger.error(f"Error listing documents: {e}")
+            return []
 
 # Global instance
 vector_db_manager = VectorDBManager()
@@ -358,6 +420,10 @@ def get_document_by_id(doc_id: str) -> Optional[Dict[str, Any]]:
     """Get document by ID"""
     return vector_db_manager.get_document_by_id(doc_id)
 
+def list_documents(filter_has_document_id: bool = True, limit: int = 50) -> List[Dict[str, Any]]:
+    """Convenience wrapper to list documents from the vector DB manager."""
+    return vector_db_manager.list_documents(filter_has_document_id=filter_has_document_id, limit=limit)
+
 def ensure_templates_seeded() -> int:
     """Ensure core templates are present in the vector DB."""
     return vector_db_manager.seed_templates()
@@ -385,6 +451,7 @@ __all__ = [
     'search_technical_questions',
     'get_database_stats',
     'get_document_by_id',
+    'list_documents',
     'ensure_templates_seeded',
     'search_templates',
     'ensure_interview_questions_seeded',

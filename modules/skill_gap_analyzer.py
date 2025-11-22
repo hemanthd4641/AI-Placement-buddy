@@ -397,7 +397,28 @@ class SkillGapAnalyzer:
                     skill = rec['skill']
                     if skill in enhanced_recommendations:
                         rec['vector_db_context'] = enhanced_recommendations[skill]
-            
+
+            # If LLM is available, prefer LLM-generated personalized recommendations and roadmap
+            if self.model_manager and getattr(self.model_manager, 'models', {}).get('lm'):
+                try:
+                    llm_recs = self._generate_personalized_recommendations_with_llm({
+                        'missing_essential': gaps['missing_essential'],
+                        'missing_important': gaps['missing_important'],
+                        'missing_nice_to_have': gaps['missing_nice_to_have']
+                    }, current_scores)
+                    if llm_recs:
+                        recommendations = llm_recs
+
+                    llm_roadmap = self._generate_roadmap_with_llm({
+                        'missing_essential': gaps['missing_essential'],
+                        'missing_important': gaps['missing_important'],
+                        'missing_nice_to_have': gaps['missing_nice_to_have']
+                    }, target_role)
+                    if llm_roadmap and 'phases' in llm_roadmap:
+                        roadmap = llm_roadmap
+                except Exception as e:
+                    print(f"Warning: LLM-based recommendations/roadmap generation failed: {e}")
+
             return {
                 'target_role': target_role,
                 'user_skills': user_skills,
