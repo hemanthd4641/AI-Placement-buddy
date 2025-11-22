@@ -1,7 +1,7 @@
 # AI Placement Mentor Bot
 
 
-An AI-powered placement preparation assistant focused on resume analysis, skill-gap recommendations, career roadmaps, and robust PDF document Q&A. Built with 100% free and open-source tools. Uses Google Gemini (or local sentence-transformers) for all LLM and embedding tasks—no Hugging Face API required.
+An AI-powered placement preparation assistant focused on resume analysis, skill-gap recommendations, career roadmaps, and robust PDF document Q&A. Built with 100% free and open-source tools. Uses Google Gemini as llm
 
 ## 🎯 Overview
 
